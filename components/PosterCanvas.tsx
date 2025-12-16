@@ -2,21 +2,38 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as fabric from 'fabric'; 
-import { Type, Download, Palette } from 'lucide-react';
+import { Type, Download, Palette, Sparkles, Loader2, Trash2 } from 'lucide-react';
+
+// Standard web fonts to choose from
+const FONT_FAMILIES = [
+  'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 
+  'Verdana', 'Georgia', 'Impact', 'Comic Sans MS'
+];
 
 const PosterCanvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
   const [bgColor, setBgColor] = useState('#ffffff'); 
+  
+  // AI States
+  const [prompt, setPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [showAiInput, setShowAiInput] = useState(false);
 
-  // Define your poster dimensions (e.g., A4 ratio)
+  // Text Styling States
+  const [selectedObject, setSelectedObject] = useState<fabric.Object | null>(null);
+  const [textConfig, setTextConfig] = useState({
+    color: '#333333',
+    fontSize: 30,
+    fontFamily: 'Arial'
+  });
+
   const TEMPLATE_WIDTH = 500;
   const TEMPLATE_HEIGHT = 700;
 
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // 1. Initialize Canvas
     const initCanvas = new fabric.Canvas(canvasRef.current, {
       height: TEMPLATE_HEIGHT,
       width: TEMPLATE_WIDTH,
@@ -25,87 +42,163 @@ const PosterCanvas = () => {
 
     setCanvas(initCanvas);
 
-    // ---------------------------------------------------------
-    // 2. ADD FIXED COMPANY LOGO (Top Left)
-    // ---------------------------------------------------------
-    // Make sure you have a 'logo.png' in your public folder
+    // --- SELECTION EVENTS ---
+    const updateSelection = () => {
+        const activeObject = initCanvas.getActiveObject();
+        setSelectedObject(activeObject || null);
+
+        if (activeObject && activeObject.type === 'i-text') {
+            const textObj = activeObject as fabric.IText;
+            // Safer color handling
+            const safeColor = (typeof textObj.fill === 'string') ? textObj.fill : '#333333';
+            
+            setTextConfig({
+                color: safeColor,
+                fontSize: textObj.fontSize || 30,
+                fontFamily: textObj.fontFamily || 'Arial'
+            });
+        }
+    };
+
+    initCanvas.on('selection:created', updateSelection);
+    initCanvas.on('selection:updated', updateSelection);
+    initCanvas.on('selection:cleared', () => setSelectedObject(null));
+
+    // --- LOAD ASSETS ---
+    
+    // 1. Logo (Fixed Top-Left)
     fabric.Image.fromURL('/logo.png').then((logo: fabric.Image) => {
-        // Resize logo (e.g., 80px width)
         logo.scaleToWidth(80); 
-
-        logo.set({
-            left: 30,  // Padding from left
-            top: 30,   // Padding from top
-            selectable: false, // User cannot select it
-            evented: false,    // User clicks "pass through" it
-            hoverCursor: 'default',
-        });
-
+        logo.set({ left: 30, top: 30, selectable: false, evented: false });
         initCanvas.add(logo);
-        // We render immediately to show the logo
-        initCanvas.renderAll();
     });
 
-    // ---------------------------------------------------------
-    // 3. ADD TEMPLATE OVERLAY (The Frame)
-    // ---------------------------------------------------------
-    // Make sure 'template.png' has transparency!
+    // 2. Template (Overlay) - FIXED LINE 90 ERROR
     fabric.Image.fromURL('/template.png').then((img: fabric.Image) => {
       img.scaleToWidth(TEMPLATE_WIDTH);
       img.scaleToHeight(TEMPLATE_HEIGHT);
       
-      // Set overlayImage to ensure this image is ALWAYS on top of everything
-      // including the logo and user text.
+      // V6 Syntax: Assign directly to property
       initCanvas.overlayImage = img;
+      
+      // V6 Syntax: Create a background rect if needed, otherwise just render
       initCanvas.renderAll();
     });
 
     return () => {
       initCanvas.dispose();
     };
-  }, []); // Empty dependency array = runs once on mount
+  }, []);
 
-  
-  // --- HELPERS ---
+  // --- HANDLERS ---
 
-  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newColor = e.target.value;
-    setBgColor(newColor);
-
+  const handleBgColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBgColor(e.target.value);
     if (canvas) {
-      canvas.backgroundColor = newColor;
+      canvas.backgroundColor = e.target.value;
       canvas.renderAll();
     }
   };
 
+  const handleTextColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const color = e.target.value;
+    setTextConfig(prev => ({ ...prev, color }));
+    
+    if (canvas) {
+        const activeObj = canvas.getActiveObject() as fabric.IText;
+        if (activeObj && activeObj.type === 'i-text') {
+            activeObj.set({ fill: color });
+            canvas.renderAll();
+        }
+    }
+  };
+
+  const handleFontSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const size = parseInt(e.target.value, 10);
+    setTextConfig(prev => ({ ...prev, fontSize: size }));
+
+    if (canvas) {
+        const activeObj = canvas.getActiveObject() as fabric.IText;
+        if (activeObj && activeObj.type === 'i-text') {
+            activeObj.set({ fontSize: size });
+            canvas.renderAll();
+        }
+    }
+  };
+
+  const handleFontFamilyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const font = e.target.value;
+    setTextConfig(prev => ({ ...prev, fontFamily: font }));
+
+    if (canvas) {
+        const activeObj = canvas.getActiveObject() as fabric.IText;
+        if (activeObj && activeObj.type === 'i-text') {
+            activeObj.set({ fontFamily: font });
+            canvas.renderAll();
+        }
+    }
+  };
+
+  const deleteSelected = () => {
+    if (canvas) {
+        const activeObj = canvas.getActiveObject();
+        if (activeObj) {
+            canvas.remove(activeObj);
+            canvas.discardActiveObject();
+            canvas.renderAll();
+            setSelectedObject(null);
+        }
+    }
+  }
+
   const addText = () => {
     if (canvas) {
       const text = new fabric.IText('Edit Me', {
-        left: TEMPLATE_WIDTH / 2,
-        top: TEMPLATE_HEIGHT / 2,
-        originX: 'center',
-        originY: 'center',
-        fontFamily: 'sans-serif',
-        fontSize: 32,
-        fill: '#333',
+        left: TEMPLATE_WIDTH / 2, top: TEMPLATE_HEIGHT / 2,
+        originX: 'center', originY: 'center',
+        fontFamily: 'Arial', fontSize: 32, fill: '#333333',
         fontWeight: 'bold',
       });
       canvas.add(text);
       canvas.setActiveObject(text);
+      setSelectedObject(text);
+      setTextConfig({ color: '#333333', fontSize: 32, fontFamily: 'Arial' });
+    }
+  };
+
+  const generateAiImage = async () => {
+    if (!prompt) return;
+    setIsGenerating(true);
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json();
+      if (data.image && canvas) {
+        fabric.Image.fromURL(data.image).then((img) => {
+            img.scaleToWidth(200);
+            img.set({ left: TEMPLATE_WIDTH/2, top: TEMPLATE_HEIGHT/2, originX:'center', originY:'center' });
+            canvas.add(img);
+            canvas.setActiveObject(img);
+        });
+        setPrompt('');
+        setShowAiInput(false);
+      } else {
+        alert("Error: " + (data.error || "Failed"));
+      }
+    } catch (error) {
+      alert("Failed to generate image.");
+    } finally {
+      setIsGenerating(false);
     }
   };
 
   const downloadPoster = () => {
     if (canvas) {
-        // Export to high-quality PNG
-        const dataURL = canvas.toDataURL({
-            format: 'png',
-            quality: 1,
-            multiplier: 2 // 2x Resolution
-        });
-        
+        const dataURL = canvas.toDataURL({ format: 'png', multiplier: 2 });
         const link = document.createElement('a');
-        link.download = 'custom-poster.png';
+        link.download = 'poster.png';
         link.href = dataURL;
         document.body.appendChild(link);
         link.click();
@@ -114,57 +207,95 @@ const PosterCanvas = () => {
   };
 
   return (
-    <div className="flex flex-col md:flex-row gap-8 p-8 justify-center items-start min-h-screen bg-gray-50">
+    <div className="flex flex-col md:flex-row gap-8 p-8 justify-center items-start min-h-screen bg-gray-50 font-sans">
       
-      {/* --- LEFT SIDEBAR: CONTROLS --- */}
-      <div className="bg-white p-6 rounded-xl shadow-lg flex flex-col gap-5 w-full md:w-72 border border-gray-100">
+      {/* SIDEBAR */}
+      <div className="bg-white p-6 rounded-xl shadow-lg flex flex-col gap-5 w-full md:w-80 border border-gray-100">
         <h3 className="font-bold text-gray-800 text-lg">Poster Studio</h3>
-        
-        {/* Color Picker */}
-        <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-600">
-                <Palette size={16} /> Background Color
-            </label>
-            <div className="flex items-center gap-3 border p-2 rounded-lg cursor-pointer hover:bg-gray-50 transition">
-                <input 
-                    type="color" 
-                    value={bgColor}
-                    onChange={handleColorChange}
-                    className="w-10 h-10 border-none cursor-pointer bg-transparent rounded-md overflow-hidden"
-                />
-                <span className="text-gray-500 text-sm uppercase font-mono">{bgColor}</span>
+
+        {/* Global Background */}
+        {!selectedObject && (
+            <div className="space-y-2">
+                <label className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    Background
+                </label>
+                <div className="flex items-center gap-3 border p-2 rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input type="color" value={bgColor} onChange={handleBgColorChange} className="w-8 h-8 cursor-pointer bg-transparent border-none"/>
+                    <span className="text-gray-500 text-sm uppercase">{bgColor}</span>
+                </div>
             </div>
-        </div>
+        )}
+
+        {/* TEXT EDITOR */}
+        {selectedObject && selectedObject.type === 'i-text' && (
+            <div className="flex flex-col gap-4 bg-blue-50 p-4 rounded-lg border border-blue-100">
+                <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Text Options</span>
+                    <button onClick={deleteSelected} className="text-red-500 hover:bg-red-100 p-1 rounded">
+                        <Trash2 size={16}/>
+                    </button>
+                </div>
+                
+                <div>
+                    <label className="text-xs text-gray-500 block mb-1">Font Family</label>
+                    <select 
+                        value={textConfig.fontFamily} 
+                        onChange={handleFontFamilyChange}
+                        className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-gray-800 focus:outline-none focus:border-blue-500"
+                    >
+                        {FONT_FAMILIES.map(font => (
+                            <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="flex gap-3">
+                    <div className="flex-1">
+                        <label className="text-xs text-gray-500 block mb-1">Color</label>
+                        <div className="flex items-center h-9 border border-gray-300 rounded bg-white px-2">
+                            <input type="color" value={textConfig.color} onChange={handleTextColorChange} className="w-full h-6 cursor-pointer bg-transparent border-none"/>
+                        </div>
+                    </div>
+                    <div className="flex-1">
+                        <label className="text-xs text-gray-500 block mb-1">Size</label>
+                        <input type="number" min="10" max="200" value={textConfig.fontSize} onChange={handleFontSizeChange} className="w-full p-2 h-9 text-sm border border-gray-300 rounded text-gray-800"/>
+                    </div>
+                </div>
+            </div>
+        )}
 
         <hr className="border-gray-100" />
 
-        {/* Action Buttons */}
-        <button 
-          onClick={addText}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium shadow-sm"
-        >
-          <Type size={18} />
-          Add Text
+        {/* AI Section */}
+        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+            <button onClick={() => setShowAiInput(!showAiInput)} className="flex items-center gap-2 text-indigo-700 font-bold text-sm mb-2 hover:underline">
+                <Sparkles size={16} /> Generate with Nano Banana
+            </button>
+            {showAiInput && (
+                <div className="flex flex-col gap-2">
+                    <textarea 
+                        className="w-full p-2 text-sm text-gray-900 bg-white border border-indigo-200 rounded focus:outline-none"
+                        placeholder="e.g. A cyberpunk cat" rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)}
+                    />
+                    <button onClick={generateAiImage} disabled={isGenerating || !prompt} className="bg-indigo-600 text-white text-xs font-bold py-2 rounded hover:bg-indigo-700 disabled:opacity-50 flex justify-center items-center gap-2">
+                        {isGenerating ? <Loader2 className="animate-spin" size={14}/> : 'Generate'}
+                    </button>
+                </div>
+            )}
+        </div>
+
+        <button onClick={addText} className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition font-medium">
+          <Type size={18} /> Add Text
         </button>
 
-        <button 
-          onClick={downloadPoster}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-black transition mt-auto shadow-sm"
-        >
-          <Download size={18} />
-          Download
+        <button onClick={downloadPoster} className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-black transition mt-auto">
+          <Download size={18} /> Download
         </button>
-
-        <p className="text-xs text-center text-gray-400 mt-2">
-            *Logo and Frame are fixed.
-        </p>
       </div>
 
-      {/* --- RIGHT SIDE: CANVAS --- */}
       <div className="border border-gray-200 shadow-2xl bg-white rounded-sm overflow-hidden">
         <canvas ref={canvasRef} />
       </div>
-
     </div>
   );
 };

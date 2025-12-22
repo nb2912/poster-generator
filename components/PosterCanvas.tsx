@@ -16,7 +16,9 @@ const PosterCanvas = () => {
   const [bgColor, setBgColor] = useState('#ffffff'); 
   
   // AI States
-  const [prompt, setPrompt] = useState('');
+  const [story, setStory] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [building, setBuilding] = useState('Main Building');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAiInput, setShowAiInput] = useState(false);
 
@@ -157,26 +159,34 @@ const PosterCanvas = () => {
   };
 
   const generateAiImage = async () => {
-    if (!prompt) return;
+    if (!story || !imageFile) return;
     setIsGenerating(true);
     try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        body: JSON.stringify({ prompt }),
-      });
-      const data = await res.json();
-      if (data.image && canvas) {
-        fabric.Image.fromURL(data.image).then((img) => {
-            img.scaleToWidth(200);
-            img.set({ left: TEMPLATE_WIDTH/2, top: TEMPLATE_HEIGHT/2, originX:'center', originY:'center' });
-            canvas.add(img);
-            canvas.setActiveObject(img);
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const imageBase64 = (reader.result as string).split(',')[1];
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: imageBase64, story, building }),
         });
-        setPrompt('');
-        setShowAiInput(false);
-      } else {
-        alert("Error: " + (data.error || "Failed"));
-      }
+        const data = await res.json();
+        if (data.image && canvas) {
+          fabric.Image.fromURL(data.image).then((img) => {
+              img.scaleToWidth(400);
+              img.set({ left: TEMPLATE_WIDTH/2, top: TEMPLATE_HEIGHT/2, originX:'center', originY:'center' });
+              canvas.add(img);
+              canvas.setActiveObject(img);
+          });
+          setStory('');
+          setImageFile(null);
+          setBuilding('Main Building');
+          setShowAiInput(false);
+        } else {
+          alert("Error: " + (data.error || "Failed"));
+        }
+      };
+      reader.readAsDataURL(imageFile);
     } catch (error) {
       alert("Failed to generate image.");
     } finally {
@@ -259,16 +269,42 @@ const PosterCanvas = () => {
         {/* AI Section */}
         <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
             <button onClick={() => setShowAiInput(!showAiInput)} className="flex items-center gap-2 text-indigo-700 font-bold text-sm mb-2 hover:underline">
-                <Sparkles size={16} /> Generate with Nano Banana
+                <Sparkles size={16} /> Generate Alumni Poster with Gemini
             </button>
             {showAiInput && (
                 <div className="flex flex-col gap-2">
-                    <textarea 
-                        className="w-full p-2 text-sm text-gray-900 bg-white border border-indigo-200 rounded focus:outline-none"
-                        placeholder="e.g. A cyberpunk cat" rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)}
-                    />
-                    <button onClick={generateAiImage} disabled={isGenerating || !prompt} className="bg-indigo-600 text-white text-xs font-bold py-2 rounded hover:bg-indigo-700 disabled:opacity-50 flex justify-center items-center gap-2">
-                        {isGenerating ? <Loader2 className="animate-spin" size={14}/> : 'Generate'}
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Upload Your Photo</label>
+                        <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={(e) => setImageFile(e.target.files?.[0] || null)} 
+                            className="w-full p-2 text-sm text-gray-900 bg-white border border-indigo-200 rounded focus:outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Memorable Story</label>
+                        <textarea 
+                            className="w-full p-2 text-sm text-gray-900 bg-white border border-indigo-200 rounded focus:outline-none"
+                            placeholder="Share your memorable story from college..." rows={3} value={story} onChange={(e) => setStory(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">SRM Building</label>
+                        <select 
+                            value={building} 
+                            onChange={(e) => setBuilding(e.target.value)}
+                            className="w-full p-2 text-sm border border-indigo-200 rounded bg-white text-gray-800 focus:outline-none"
+                        >
+                            <option>Main Building</option>
+                            <option>Tech Park</option>
+                            <option>Library</option>
+                            <option>Auditorium</option>
+                            <option>Hostel</option>
+                        </select>
+                    </div>
+                    <button onClick={generateAiImage} disabled={isGenerating || !story || !imageFile} className="bg-indigo-600 text-white text-xs font-bold py-2 rounded hover:bg-indigo-700 disabled:opacity-50 flex justify-center items-center gap-2">
+                        {isGenerating ? <Loader2 className="animate-spin" size={14}/> : 'Generate Poster'}
                     </button>
                 </div>
             )}

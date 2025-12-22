@@ -73,17 +73,7 @@ const PosterCanvas = () => {
         initCanvas.add(logo);
     });
 
-    // 2. Template (Overlay) - FIXED LINE 90 ERROR
-    fabric.Image.fromURL('/template.png').then((img: fabric.Image) => {
-      img.scaleToWidth(TEMPLATE_WIDTH);
-      img.scaleToHeight(TEMPLATE_HEIGHT);
-      
-      // V6 Syntax: Assign directly to property
-      initCanvas.overlayImage = img;
-      
-      // V6 Syntax: Create a background rect if needed, otherwise just render
-      initCanvas.renderAll();
-    });
+
 
     return () => {
       initCanvas.dispose();

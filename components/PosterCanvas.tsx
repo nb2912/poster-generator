@@ -303,7 +303,7 @@ const PosterCanvas = () => {
                             <option>Hostel</option>
                         </select>
                     </div>
-                    <button onClick={generateAiImage} disabled={isGenerating || !story || !imageFile} className="bg-indigo-600 text-white text-xs font-bold py-2 rounded hover:bg-indigo-700 disabled:opacity-50 flex justify-center items-center gap-2">
+                    <button onClick={generateAiImage} disabled={isGenerating || !story} className="bg-indigo-600 text-white text-xs font-bold py-2 rounded hover:bg-indigo-700 disabled:opacity-50 flex justify-center items-center gap-2">
                         {isGenerating ? <Loader2 className="animate-spin" size={14}/> : 'Generate Poster'}
                     </button>
                 </div>

@@ -12,9 +12,10 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!image || !story || !building) {
+    // CHANGE 1: Image is no longer required in this check
+    if (!story || !building) {
       return NextResponse.json(
-        { error: "Invalid request payload" },
+        { error: "Invalid request payload: Missing story or building" },
         { status: 400 }
       );
     }
@@ -23,31 +24,42 @@ export async function POST(req: Request) {
       apiKey: process.env.GOOGLE_API_KEY,
     });
 
-    const prompt = `
+    // CHANGE 2: Base prompt setup
+    let prompt = `
 Create a high-quality alumni poster for SRM University.
 
 Requirements:
-- Use the provided image of the person
 - Include the following story: "${story}"
 - Set the scene near the ${building} of SRM University
 - Apply premium SRM branding aesthetics
 - Generate a visually compelling, professional poster
     `.trim();
 
+    // CHANGE 3: Add specific instructions based on whether an image was uploaded
+    if (image) {
+      prompt += `\n- Use the provided image of the person and integrate them naturally into the scene.`;
+    } else {
+      prompt += `\n- Create a high-quality illustration or photorealistic image of a student/alumnus that matches the mood of the story.`;
+    }
+
+    // CHANGE 4: Construct the 'parts' array dynamically
+    const parts: any[] = [{ text: prompt }];
+
+    if (image) {
+      parts.push({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: image,
+        },
+      });
+    }
+
     const response = await genAI.models.generateContent({
       model: "gemini-2.5-flash-image",
       contents: [
         {
           role: "user",
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: "image/jpeg",
-                data: image,
-              },
-            },
-          ],
+          parts: parts,
         },
       ],
     });

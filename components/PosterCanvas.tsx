@@ -4,10 +4,20 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as fabric from 'fabric'; 
 import { Type, Download, Palette, Sparkles, Loader2, Trash2 } from 'lucide-react';
 
-// Standard web fonts to choose from
+// Standard web fonts
 const FONT_FAMILIES = [
   'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 
   'Verdana', 'Georgia', 'Impact', 'Comic Sans MS'
+];
+
+// New: Theme Options
+const THEMES = [
+    "Vintage / Retro",
+    "Futuristic",
+    "Minimalism",
+    "Maximalism",
+    "Abstract",
+    "Psychedelic"
 ];
 
 const PosterCanvas = () => {
@@ -19,6 +29,7 @@ const PosterCanvas = () => {
   const [story, setStory] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [building, setBuilding] = useState('Main Building');
+  const [theme, setTheme] = useState('Vintage / Retro'); // <--- NEW STATE
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAiInput, setShowAiInput] = useState(false);
 
@@ -51,7 +62,6 @@ const PosterCanvas = () => {
 
         if (activeObject && activeObject.type === 'i-text') {
             const textObj = activeObject as fabric.IText;
-            // Safer color handling
             const safeColor = (typeof textObj.fill === 'string') ? textObj.fill : '#333333';
             
             setTextConfig({
@@ -67,15 +77,11 @@ const PosterCanvas = () => {
     initCanvas.on('selection:cleared', () => setSelectedObject(null));
 
     // --- LOAD ASSETS ---
-    
-    // 1. Logo (Fixed Top-Left)
     fabric.Image.fromURL('/logo.png').then((logo: fabric.Image) => {
         logo.scaleToWidth(80); 
         logo.set({ left: 30, top: 30, selectable: false, evented: false });
         initCanvas.add(logo);
     });
-
-
 
     return () => {
       initCanvas.dispose();
@@ -95,7 +101,6 @@ const PosterCanvas = () => {
   const handleTextColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const color = e.target.value;
     setTextConfig(prev => ({ ...prev, color }));
-    
     if (canvas) {
         const activeObj = canvas.getActiveObject() as fabric.IText;
         if (activeObj && activeObj.type === 'i-text') {
@@ -108,7 +113,6 @@ const PosterCanvas = () => {
   const handleFontSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const size = parseInt(e.target.value, 10);
     setTextConfig(prev => ({ ...prev, fontSize: size }));
-
     if (canvas) {
         const activeObj = canvas.getActiveObject() as fabric.IText;
         if (activeObj && activeObj.type === 'i-text') {
@@ -121,7 +125,6 @@ const PosterCanvas = () => {
   const handleFontFamilyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const font = e.target.value;
     setTextConfig(prev => ({ ...prev, fontFamily: font }));
-
     if (canvas) {
         const activeObj = canvas.getActiveObject() as fabric.IText;
         if (activeObj && activeObj.type === 'i-text') {
@@ -158,36 +161,57 @@ const PosterCanvas = () => {
     }
   };
 
+  // --- UPDATED AI GENERATION LOGIC ---
   const generateAiImage = async () => {
-    if (!story || !imageFile) return;
+    if (!story) return; // Story is required, but Image is now optional
     setIsGenerating(true);
+
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const imageBase64 = (reader.result as string).split(',')[1];
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: imageBase64, story, building }),
+      let imageBase64 = null;
+
+      // 1. Process Image if uploaded
+      if (imageFile) {
+        imageBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(imageFile);
+            reader.onload = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = error => reject(error);
         });
-        const data = await res.json();
-        if (data.image && canvas) {
-          fabric.Image.fromURL(data.image).then((img) => {
-              img.scaleToWidth(400);
-              img.set({ left: TEMPLATE_WIDTH/2, top: TEMPLATE_HEIGHT/2, originX:'center', originY:'center' });
-              canvas.add(img);
-              canvas.setActiveObject(img);
-          });
-          setStory('');
-          setImageFile(null);
-          setBuilding('Main Building');
-          setShowAiInput(false);
-        } else {
-          alert("Error: " + (data.error || "Failed"));
-        }
-      };
-      reader.readAsDataURL(imageFile);
+      }
+
+      // 2. Send Data to API
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            image: imageBase64, 
+            story, 
+            building,
+            theme // <--- Sending the selected theme
+        }),
+      });
+
+      const data = await res.json();
+
+      // 3. Handle Response
+      if (data.image && canvas) {
+        fabric.Image.fromURL(data.image).then((img) => {
+            img.scaleToWidth(400);
+            img.set({ left: TEMPLATE_WIDTH/2, top: TEMPLATE_HEIGHT/2, originX:'center', originY:'center' });
+            canvas.add(img);
+            canvas.setActiveObject(img);
+        });
+        
+        // Reset UI
+        setStory('');
+        setImageFile(null);
+        setBuilding('Main Building');
+        setShowAiInput(false);
+      } else {
+        alert("Error: " + (data.error || "Failed"));
+      }
     } catch (error) {
+      console.error(error);
       alert("Failed to generate image.");
     } finally {
       setIsGenerating(false);
@@ -236,6 +260,7 @@ const PosterCanvas = () => {
                     </button>
                 </div>
                 
+                {/* Font Selector */}
                 <div>
                     <label className="text-xs text-gray-500 block mb-1">Font Family</label>
                     <select 
@@ -269,12 +294,28 @@ const PosterCanvas = () => {
         {/* AI Section */}
         <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
             <button onClick={() => setShowAiInput(!showAiInput)} className="flex items-center gap-2 text-indigo-700 font-bold text-sm mb-2 hover:underline">
-                <Sparkles size={16} /> Generate Alumni Poster with Gemini
+                <Sparkles size={16} /> Generate Alumni Poster
             </button>
+            
             {showAiInput && (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
+                    {/* 1. Theme Selector (NEW) */}
                     <div>
-                        <label className="text-xs text-gray-500 block mb-1">Upload Your Photo</label>
+                        <label className="text-xs text-indigo-600 font-bold block mb-1">Art Style / Theme</label>
+                        <select 
+                            value={theme}
+                            onChange={(e) => setTheme(e.target.value)}
+                            className="w-full p-2 text-sm border border-indigo-200 rounded bg-white text-gray-800 focus:outline-none focus:border-indigo-500"
+                        >
+                            {THEMES.map(t => (
+                                <option key={t} value={t}>{t}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* 2. Photo Upload */}
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Upload Your Photo (Optional)</label>
                         <input 
                             type="file" 
                             accept="image/*" 
@@ -282,6 +323,8 @@ const PosterCanvas = () => {
                             className="w-full p-2 text-sm text-gray-900 bg-white border border-indigo-200 rounded focus:outline-none"
                         />
                     </div>
+
+                    {/* 3. Story Input */}
                     <div>
                         <label className="text-xs text-gray-500 block mb-1">Memorable Story</label>
                         <textarea 
@@ -289,6 +332,8 @@ const PosterCanvas = () => {
                             placeholder="Share your memorable story from college..." rows={3} value={story} onChange={(e) => setStory(e.target.value)}
                         />
                     </div>
+
+                    {/* 4. Building Selector */}
                     <div>
                         <label className="text-xs text-gray-500 block mb-1">SRM Building</label>
                         <select 
@@ -303,6 +348,7 @@ const PosterCanvas = () => {
                             <option>Hostel</option>
                         </select>
                     </div>
+
                     <button onClick={generateAiImage} disabled={isGenerating || !story} className="bg-indigo-600 text-white text-xs font-bold py-2 rounded hover:bg-indigo-700 disabled:opacity-50 flex justify-center items-center gap-2">
                         {isGenerating ? <Loader2 className="animate-spin" size={14}/> : 'Generate Poster'}
                     </button>
